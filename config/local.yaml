@@ -1,0 +1,7 @@
+DB_HOST: localhost
+DB_USER: dcard_test
+DB_PASS: mysecretpassword
+DB_NAME: dcard_test
+DB_PORT: 5432
+APP_PORT: ":8080"
+REDIS_HOST: localhost
