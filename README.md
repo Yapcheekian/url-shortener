@@ -8,7 +8,7 @@
 
 
 ### Considerations
-1. Redirection to original URL is made by responding back 301 permanent redirect. [301 status code](https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/301) is chosed so that browser will cache the result and effectively lessen burden on server side. However, if business requirement changes, such that we would like to track click rate, then in such case [302 status code](https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/302) will be a better choice.
+1. Redirection to original URL is made by responding back 301 permanent redirect. [301 status code](https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/301) is chosen so that browser will cache the result and effectively lessen burden on server side. However, if business requirement changes, such that we would like to track click rate, then in such case [302 status code](https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/302) will be a better choice.
 2. As there are more read than write, result is stored in redis to improve performace.
 
 ### Limitation
