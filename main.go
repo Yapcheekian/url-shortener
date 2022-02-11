@@ -87,4 +87,7 @@ func main() {
 	if err := svr.Shutdown(ctx); err != nil {
 		log.Println(fmt.Sprintf("Server forced to shutdown: %s", err.Error()))
 	}
+
+	db.Close()
+	rClient.Close()
 }

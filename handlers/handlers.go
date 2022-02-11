@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -16,6 +17,10 @@ import (
 	"github.com/go-redis/redis/v8"
 	"github.com/jmoiron/sqlx"
 	"github.com/mattheath/base62"
+)
+
+const (
+	ttl = 10 * time.Minute
 )
 
 var (
@@ -36,7 +41,6 @@ var generateID = func() (int64, error) {
 }
 
 var base62EncodeID = base62.EncodeInt64
-var decodeBase62ToID = base62.DecodeToInt64
 
 type ShortenerHandler struct {
 	db    *sqlx.DB
@@ -101,8 +105,13 @@ func (h *ShortenerHandler) ShortenURL(c *gin.Context) {
 			}
 		}
 
-		host := parseServerHost(c.Request)
+		if err := h.redis.Set(context.TODO(), url.ShortURL, urlRequest.URL, ttl).Err(); err != nil {
+			log.Println("redis.Set failed: ", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
+			return
+		}
 
+		host := parseServerHost(c.Request)
 		c.JSON(http.StatusOK, urlResponse{
 			ID:       url.ShortURL,
 			ShortURL: fmt.Sprintf("%s/%s", host, url.ShortURL),
@@ -125,8 +134,13 @@ func (h *ShortenerHandler) ShortenURL(c *gin.Context) {
 		return
 	}
 
-	host := parseServerHost(c.Request)
+	if err := h.redis.Set(context.TODO(), shortURL, urlRequest.URL, ttl).Err(); err != nil {
+		log.Println("redis.Set failed: ", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
+		return
+	}
 
+	host := parseServerHost(c.Request)
 	c.JSON(http.StatusOK, urlResponse{
 		ID:       shortURL,
 		ShortURL: fmt.Sprintf("%s/%s", host, shortURL),
@@ -136,12 +150,23 @@ func (h *ShortenerHandler) ShortenURL(c *gin.Context) {
 func (h *ShortenerHandler) RedirectURL(c *gin.Context) {
 	shortURL := c.Param("urlID")
 
-	id := decodeBase62ToID(shortURL)
+	val, err := h.redis.Get(context.TODO(), shortURL).Result()
+	if err != nil && err != redis.Nil {
+		log.Println("redis.Get failed: ", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
+		return
+	}
 
-	url, err := h.findByID(id)
+	// cache hit
+	if err != redis.Nil {
+		c.Redirect(http.StatusMovedPermanently, val)
+		return
+	}
+
+	url, err := h.findByShortURL(shortURL)
 
 	if err != nil && err != sql.ErrNoRows {
-		log.Println("findByID failed: ", err)
+		log.Println("findByShortURL failed: ", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
 		return
 	}
@@ -223,10 +248,10 @@ func validateInput(urlReq urlRequest) error {
 	return nil
 }
 
-func (h *ShortenerHandler) findByID(id int64) (models.URL, error) {
+func (h *ShortenerHandler) findByShortURL(shortURL string) (models.URL, error) {
 	var url models.URL
 
-	if err := h.db.Get(&url, "SELECT long_url, expire_at FROM urls WHERE id = $1", id); err != nil {
+	if err := h.db.Get(&url, "SELECT long_url, expire_at FROM urls WHERE short_url = $1", shortURL); err != nil {
 		return url, err
 	}
 

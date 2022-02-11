@@ -10,6 +10,7 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/gin-gonic/gin"
+	"github.com/go-redis/redismock/v8"
 	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
@@ -19,7 +20,8 @@ type URLSuite struct {
 	suite.Suite
 	router *gin.Engine
 
-	mockSql sqlmock.Sqlmock
+	mockSql   sqlmock.Sqlmock
+	mockRedis redismock.ClientMock
 }
 
 func (s *URLSuite) SetupTest() {
@@ -31,7 +33,10 @@ func (s *URLSuite) SetupTest() {
 	s.NoError(err)
 	s.mockSql = sqlMock
 	mockDB := sqlx.NewDb(mock, "postgres")
-	NewShortenerHandler(r, mockDB, nil)
+	mockClient, mockRedis := redismock.NewClientMock()
+	s.mockRedis = mockRedis
+
+	NewShortenerHandler(r, mockDB, mockClient)
 }
 
 func TestURLSuite(t *testing.T) {
@@ -55,6 +60,7 @@ func (s *URLSuite) TestShortenURL() {
 			mockFunc: func() {
 				mockRows := sqlmock.NewRows([]string{"id", "short_url", "expire_at"}).AddRow(12345, "qwerty", "2030-02-20T09:20:41+08:00")
 				s.mockSql.ExpectQuery(regexp.QuoteMeta("SELECT id, short_url, expire_at FROM urls WHERE long_url = $1")).WithArgs("https://amazon.com").WillReturnRows(mockRows)
+				s.mockRedis.Regexp().ExpectSet("qwerty", "https://amazon.com", ttl).SetVal("OK")
 
 			},
 			reqBody: `{"url": "https://amazon.com", "expireAt": "2025-02-20T09:20:41+08:00"}`,
@@ -68,6 +74,7 @@ func (s *URLSuite) TestShortenURL() {
 				mockRows := sqlmock.NewRows([]string{"id", "short_url", "expire_at"}).AddRow(12345, "qwerty", "2025-02-20T09:20:41+08:00")
 				s.mockSql.ExpectQuery(regexp.QuoteMeta("SELECT id, short_url, expire_at FROM urls WHERE long_url = $1")).WithArgs("https://amazon.com").WillReturnRows(mockRows)
 				s.mockSql.ExpectExec(regexp.QuoteMeta("UPDATE urls SET expire_at = $1 WHERE id = $2")).WithArgs("2030-02-20T09:20:41+08:00", 12345).WillReturnResult(sqlmock.NewResult(1, 1))
+				s.mockRedis.Regexp().ExpectSet("qwerty", "https://amazon.com", ttl).SetVal("OK")
 			},
 			reqBody: `{"url": "https://amazon.com", "expireAt": "2030-02-20T09:20:41+08:00"}`,
 		},
@@ -104,6 +111,7 @@ func (s *URLSuite) TestShortenURL() {
 					return "ASDFG"
 				}
 				s.mockSql.ExpectExec(regexp.QuoteMeta("INSERT INTO urls(id, short_url, long_url, expire_at) VALUES ($1, $2, $3, $4)")).WithArgs(66666, "ASDFG", "https://amazon.com", "2030-02-20T09:20:41+08:00").WillReturnResult(sqlmock.NewResult(1, 1))
+				s.mockRedis.Regexp().ExpectSet("ASDFG", "https://amazon.com", ttl).SetVal("OK")
 			},
 			reqBody: `{"url": "https://amazon.com", "expireAt": "2030-02-20T09:20:41+08:00"}`,
 		},
@@ -142,11 +150,18 @@ func (s *URLSuite) TestRedirectURL() {
 			method:        http.MethodGet,
 			expStatusCode: http.StatusMovedPermanently,
 			mockFunc: func() {
-				decodeBase62ToID = func(s string) int64 {
-					return 12345
-				}
+				s.mockRedis.ExpectGet("QAZWSX").RedisNil()
 				mockRows := sqlmock.NewRows([]string{"long_url", "expire_at"}).AddRow("https://amazon.com", "2030-02-20T09:20:41+08:00")
-				s.mockSql.ExpectQuery(regexp.QuoteMeta("SELECT long_url, expire_at FROM urls WHERE id = $1")).WithArgs(12345).WillReturnRows(mockRows)
+				s.mockSql.ExpectQuery(regexp.QuoteMeta("SELECT long_url, expire_at FROM urls WHERE short_url = $1")).WithArgs("QAZWSX").WillReturnRows(mockRows)
+			},
+		},
+		{
+			desc:          "url exist in db and cache hit",
+			path:          "/QAZWSX",
+			method:        http.MethodGet,
+			expStatusCode: http.StatusMovedPermanently,
+			mockFunc: func() {
+				s.mockRedis.ExpectGet("QAZWSX").SetVal("https://amazon.com")
 			},
 		},
 		{
@@ -155,11 +170,9 @@ func (s *URLSuite) TestRedirectURL() {
 			method:        http.MethodGet,
 			expStatusCode: http.StatusNotFound,
 			mockFunc: func() {
-				decodeBase62ToID = func(s string) int64 {
-					return 12345
-				}
+				s.mockRedis.ExpectGet("QAZWSX").RedisNil()
 				mockRows := sqlmock.NewRows([]string{"long_url", "expire_at"}).RowError(0, sql.ErrNoRows)
-				s.mockSql.ExpectQuery(regexp.QuoteMeta("SELECT long_url, expire_at FROM urls WHERE id = $1")).WithArgs(12345).WillReturnRows(mockRows)
+				s.mockSql.ExpectQuery(regexp.QuoteMeta("SELECT long_url, expire_at FROM urls WHERE short_url = $1")).WithArgs("QAZWSX").WillReturnRows(mockRows)
 			},
 		},
 		{
@@ -168,11 +181,9 @@ func (s *URLSuite) TestRedirectURL() {
 			method:        http.MethodGet,
 			expStatusCode: http.StatusNotFound,
 			mockFunc: func() {
-				decodeBase62ToID = func(s string) int64 {
-					return 12345
-				}
+				s.mockRedis.ExpectGet("QAZWSX").RedisNil()
 				mockRows := sqlmock.NewRows([]string{"long_url", "expire_at"}).AddRow("https://amazon.com", "2010-02-20T09:20:41+08:00")
-				s.mockSql.ExpectQuery(regexp.QuoteMeta("SELECT long_url, expire_at FROM urls WHERE id = $1")).WithArgs(12345).WillReturnRows(mockRows)
+				s.mockSql.ExpectQuery(regexp.QuoteMeta("SELECT long_url, expire_at FROM urls WHERE short_url = $1")).WithArgs("QAZWSX").WillReturnRows(mockRows)
 			},
 		},
 	}
