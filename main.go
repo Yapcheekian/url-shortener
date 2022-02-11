@@ -37,9 +37,17 @@ func init() {
 		panic(err)
 	}
 
+	if err := db.Ping(); err != nil {
+		panic(err)
+	}
+
 	rClient := redis.NewClient(&redis.Options{
-		Addr: viper.GetString("REDIS_HOST"),
+		Addr: fmt.Sprintf("%s:%s", viper.GetString("REDIS_HOST"), viper.GetString("REDIS_PORT")),
 	})
+
+	if cmd := rClient.Ping(context.Background()); cmd.Err() != nil {
+		panic(cmd.Err())
+	}
 
 	shortenerHandler = handlers.NewShortenerHandler(db, rClient)
 }
@@ -58,7 +66,7 @@ func main() {
 	}
 
 	go func() {
-		if err := svr.ListenAndServe(); err != nil {
+		if err := svr.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatal("Fail to start server: ", err)
 		}
 	}()
