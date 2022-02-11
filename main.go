@@ -19,8 +19,13 @@ import (
 	"github.com/spf13/viper"
 )
 
+const (
+	gracefulShutdownDuration = 30 * time.Second
+)
+
 var (
-	shortenerHandler *handlers.ShortenerHandler
+	db      *sqlx.DB
+	rClient *redis.Client
 )
 
 func init() {
@@ -32,7 +37,8 @@ func init() {
 		viper.GetString("DB_PORT"),
 	)
 
-	db, err := sqlx.Connect("postgres", dsn)
+	var err error
+	db, err = sqlx.Connect("postgres", dsn)
 	if err != nil {
 		panic(err)
 	}
@@ -41,28 +47,24 @@ func init() {
 		panic(err)
 	}
 
-	rClient := redis.NewClient(&redis.Options{
+	rClient = redis.NewClient(&redis.Options{
 		Addr: fmt.Sprintf("%s:%s", viper.GetString("REDIS_HOST"), viper.GetString("REDIS_PORT")),
 	})
 
 	if cmd := rClient.Ping(context.Background()); cmd.Err() != nil {
 		panic(cmd.Err())
 	}
-
-	shortenerHandler = handlers.NewShortenerHandler(db, rClient)
 }
 
 func main() {
-	r := gin.Default()
+	app := gin.Default()
+	r := app.Group("/")
 
-	v1 := r.Group("/api/v1")
-	v1.POST("/urls", shortenerHandler.ShortenURL)
-
-	r.GET("/:urlID", shortenerHandler.RedirectURL)
+	handlers.NewShortenerHandler(r, db, rClient)
 
 	svr := http.Server{
 		Addr:    viper.GetString("APP_PORT"),
-		Handler: r,
+		Handler: app,
 	}
 
 	go func() {
@@ -79,7 +81,7 @@ func main() {
 
 	// The context is used to inform the application it has 30 seconds to finish
 	// cleaning up remaining resources
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), gracefulShutdownDuration)
 	defer cancel()
 
 	if err := svr.Shutdown(ctx); err != nil {

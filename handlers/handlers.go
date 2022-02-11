@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"regexp"
 	"time"
 
 	"github.com/Yapcheekian/url-shortener/models"
@@ -19,8 +20,12 @@ import (
 
 var (
 	timeFormat = time.RFC3339 // ISO 8601
+	regex      = regexp.MustCompile("^(http|https)://")
 )
 
+// generateID will output unique snowflake ID
+// It will be monkey patch during
+// testing to produce predictable result
 var generateID = func() (int64, error) {
 	node, err := snowflake.NewNode(1)
 	if err != nil {
@@ -36,11 +41,15 @@ type ShortenerHandler struct {
 }
 
 // NewShortenerHandler is the factory function of ShortenerHandler
-func NewShortenerHandler(db *sqlx.DB, rClient *redis.Client) *ShortenerHandler {
-	return &ShortenerHandler{
+func NewShortenerHandler(router *gin.RouterGroup, db *sqlx.DB, rClient *redis.Client) {
+	handler := &ShortenerHandler{
 		db:    db,
 		redis: rClient,
 	}
+
+	v1 := router.Group("/api/v1")
+	v1.POST("/urls", handler.ShortenURL)
+	router.GET("/:urlID", handler.RedirectURL)
 }
 
 type urlRequest struct {
@@ -173,8 +182,18 @@ func validateInput(urlReq urlRequest) error {
 		return errors.New("expire time must be in the future")
 	}
 
+	//Trying to parse a hostname and path
+	// without a scheme is invalid but may not necessarily return an
+	// error, due to parsing ambiguities.
 	if _, err := url.Parse(urlReq.URL); err != nil {
 		return err
+	}
+
+	// net/url.Parse does not throw error even if
+	// input url does not contains scheme
+	// so we manually check it
+	if !regex.MatchString(urlReq.URL) {
+		return errors.New("scheme is required in URL format")
 	}
 
 	return nil
@@ -183,7 +202,7 @@ func validateInput(urlReq urlRequest) error {
 func (h *ShortenerHandler) findByLongURL(longURL string) (models.URL, error) {
 	var url models.URL
 
-	if err := h.db.Get(&url, "SELECT short_url, expire_at FROM urls WHERE long_url = $1", longURL); err != nil {
+	if err := h.db.Get(&url, "SELECT id, short_url, expire_at FROM urls WHERE long_url = $1", longURL); err != nil {
 		return url, err
 	}
 

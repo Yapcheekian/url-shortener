@@ -1,9 +1,9 @@
 package models
 
 type URL struct {
-	ID        int64  `sql:"id"`
-	ShortURL  string `sql:"short_url"`
-	LongURL   string `sql:"long_url"`
-	ExpireAt  string `sql:"expire_at"`
-	CreatedAt string `sql:"created_at"`
+	ID        int64  `db:"id"`
+	ShortURL  string `db:"short_url"`
+	LongURL   string `db:"long_url"`
+	ExpireAt  string `db:"expire_at"`
+	CreatedAt string `db:"created_at"`
 }
