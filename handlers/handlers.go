@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -32,7 +33,7 @@ var (
 // It will be monkey patch during
 // testing to produce predictable result
 var generateID = func() (int64, error) {
-	node, err := snowflake.NewNode(1)
+	node, err := snowflake.NewNode(int64(rand.Intn(10000000)))
 	if err != nil {
 		return -1, err
 	}
