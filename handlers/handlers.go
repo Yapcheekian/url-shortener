@@ -35,6 +35,9 @@ var generateID = func() (int64, error) {
 	return int64(node.Generate()), nil
 }
 
+var base62EncodeID = base62.EncodeInt64
+var decodeBase62ToID = base62.DecodeToInt64
+
 type ShortenerHandler struct {
 	db    *sqlx.DB
 	redis *redis.Client
@@ -58,8 +61,8 @@ type urlRequest struct {
 }
 
 type urlResponse struct {
-	ID       string `json:"id" db:"id"`
-	ShortURL string `json:"shortUrl" db:"short_url"`
+	ID       string `json:"id"`
+	ShortURL string `json:"shortUrl"`
 }
 
 // ShortenURL first check whether uploaded URL exists, if not, shorten the uploaded URL
@@ -87,15 +90,10 @@ func (h *ShortenerHandler) ShortenURL(c *gin.Context) {
 
 	// uploaded URL exists
 	if url.ShortURL != "" {
-		valid, err := checkValidURL(url.ExpireAt, urlRequest.ExpireAt)
-
-		if err != nil {
-			log.Println("checkValidURL failed: ", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
-			return
-		}
-
-		if !valid {
+		// check whether existing url is expired
+		// if not expired, check whether user would like to
+		// update to newer time
+		if !checkValidURL(url.ExpireAt, urlRequest.ExpireAt) {
 			if err := h.updateURLExpireTime(url.ID, urlRequest.ExpireAt); err != nil {
 				log.Println("updateURLExpireTime failed: ", err)
 				c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
@@ -119,7 +117,7 @@ func (h *ShortenerHandler) ShortenURL(c *gin.Context) {
 		return
 	}
 
-	shortURL := base62.EncodeInt64(id)
+	shortURL := base62EncodeID(id)
 
 	if err := h.insertNewURL(id, shortURL, urlRequest.URL, urlRequest.ExpireAt); err != nil {
 		log.Println("insertNewURL failed: ", err)
@@ -136,7 +134,36 @@ func (h *ShortenerHandler) ShortenURL(c *gin.Context) {
 }
 
 func (h *ShortenerHandler) RedirectURL(c *gin.Context) {
+	shortURL := c.Param("urlID")
 
+	id := decodeBase62ToID(shortURL)
+
+	url, err := h.findByID(id)
+
+	if err != nil && err != sql.ErrNoRows {
+		log.Println("findByID failed: ", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
+		return
+	}
+
+	if url.LongURL == "" {
+		c.JSON(http.StatusNotFound, gin.H{"message": "url not found"})
+		return
+	}
+
+	// check expire time
+	if isExpired(url.ExpireAt) {
+		c.JSON(http.StatusNotFound, gin.H{"message": "url is expired"})
+		return
+	}
+
+	c.Redirect(http.StatusMovedPermanently, url.LongURL)
+}
+
+func isExpired(expireTime string) bool {
+	expire, _ := time.Parse(timeFormat, expireTime)
+
+	return expire.Before(time.Now())
 }
 
 func (h *ShortenerHandler) updateURLExpireTime(id int64, expireTime string) error {
@@ -147,15 +174,12 @@ func (h *ShortenerHandler) updateURLExpireTime(id int64, expireTime string) erro
 	return nil
 }
 
-func checkValidURL(expireTime string, inputTime string) (bool, error) {
-	expire, err := time.Parse(timeFormat, expireTime)
-	if err != nil {
-		return false, err
-	}
+func checkValidURL(expireTime string, inputTime string) bool {
+	expire, _ := time.Parse(timeFormat, expireTime)
 
 	input, _ := time.Parse(timeFormat, inputTime)
 
-	return expire.After(time.Now()) && expire.After(input), nil
+	return expire.After(time.Now()) && expire.After(input)
 }
 
 func parseServerHost(req *http.Request) string {
@@ -197,6 +221,16 @@ func validateInput(urlReq urlRequest) error {
 	}
 
 	return nil
+}
+
+func (h *ShortenerHandler) findByID(id int64) (models.URL, error) {
+	var url models.URL
+
+	if err := h.db.Get(&url, "SELECT long_url, expire_at FROM urls WHERE id = $1", id); err != nil {
+		return url, err
+	}
+
+	return url, nil
 }
 
 func (h *ShortenerHandler) findByLongURL(longURL string) (models.URL, error) {

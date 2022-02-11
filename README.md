@@ -6,6 +6,10 @@
 ### Data flow
 ![](./asset/shorten.png)
 
+
+### Considerations
+1. Redirection to original URL is made by responding back 301 permanent redirect. [301 status code](https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/301) is chosed so that browser will cache the result and effectively lessen burden on server side. However, if business requirement changes, such that we would like to track click rate, then in such case [302 status code](https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/302) will be a better choice.
+
 ### Limitation
 1. For the time being, current implemention only support single instance. Running multiple instances will have chance to cause collision to occur. This is because node ID is hard coded to 1 now. To support reliability and high availability, this is not accepted, thus, node ID should be computed dynamically using IP address. This will be put inside todo list.
 ```go
