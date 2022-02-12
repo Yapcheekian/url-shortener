@@ -17,7 +17,7 @@
 node, err := snowflake.NewNode(int64(rand.Intn(10000000)))
 ```
 2. [Twitter snowflake](https://github.com/bwmarrin/snowflake/blob/master/snowflake.go#L17) use  Nov 04 2010 01:42:54 UTC as base time and [41 bits](https://github.com/bwmarrin/snowflake/blob/master/snowflake.go#L117) to store a timestamp. This mean the time bits will eventually running out of space (roughly on Year 2079) and there will be probability of collision occuring. When that time comes, a new epoch time is needed. We can mitigate this problem by using later base time at the beginning to prolong the expiry date, but this is not the ultimate solution.
-3. Rate limit for both shorten and redirect endpoints are set equal now, this can be tuned to allow more QPS for redirect endpoints.
+3. Rate limit for both shorten and redirect endpoints are set equal now, this can be tuned to allow more QPS for redirect endpoint.
 
 ### Dependency
 - [postgres](https://www.postgresql.org/docs/) : advanced RDBMS
