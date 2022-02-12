@@ -9,7 +9,7 @@ make seed
 ![](./asset/usage.png)
 
 ### Rate limit
-default rate limit is 5 requests/second
+clients from the same IP address are not allowed to hit the endpoints more than 5 times in 1 second
 ![](./asset/ratelimit1.png)
 ![](./asset/ratelimit2.png)
 
