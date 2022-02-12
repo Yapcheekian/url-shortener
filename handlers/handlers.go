@@ -33,7 +33,7 @@ var (
 // It will be monkey patch during
 // testing to produce predictable result
 var generateID = func() (int64, error) {
-	node, err := snowflake.NewNode(int64(rand.Intn(10000000)))
+	node, err := snowflake.NewNode(int64(rand.Intn(1024)))
 	if err != nil {
 		return -1, err
 	}
