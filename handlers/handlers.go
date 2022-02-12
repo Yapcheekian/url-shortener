@@ -76,13 +76,13 @@ func (h *ShortenerHandler) ShortenURL(c *gin.Context) {
 
 	if err := c.ShouldBindJSON(&urlRequest); err != nil {
 		log.Println("ShouldBindJSON failed: ", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
 		return
 	}
 
 	if err := validateInput(urlRequest); err != nil {
 		log.Println("validateInput failed: ", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
 		return
 	}
 
