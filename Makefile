@@ -18,7 +18,7 @@ seed:
 	cd ./bootstrap && go run bootstrap.go
 
 test:
-	go test ./...
+	go test -race -cover ./...
 
 clean:
 	docker rm -f postgres redis

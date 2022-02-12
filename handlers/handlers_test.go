@@ -53,7 +53,7 @@ func (s *URLSuite) TestShortenURL() {
 		reqBody       string
 	}{
 		{
-			desc:          "longURL already exist in db",
+			desc:          "longURL exist in db",
 			path:          "/api/v1/urls",
 			method:        http.MethodPost,
 			expStatusCode: http.StatusOK,
@@ -66,7 +66,7 @@ func (s *URLSuite) TestShortenURL() {
 			reqBody: `{"url": "https://amazon.com", "expireAt": "2025-02-20T09:20:41+08:00"}`,
 		},
 		{
-			desc:          "longURL already exist in db but input date is newer than the old one",
+			desc:          "longURL exist in db but input date is newer than the old one",
 			path:          "/api/v1/urls",
 			method:        http.MethodPost,
 			expStatusCode: http.StatusOK,
