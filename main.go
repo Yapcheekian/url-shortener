@@ -12,6 +12,7 @@ import (
 
 	_ "github.com/Yapcheekian/url-shortener/config"
 	"github.com/Yapcheekian/url-shortener/handlers"
+	"github.com/Yapcheekian/url-shortener/middlewares"
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
 	"github.com/jmoiron/sqlx"
@@ -21,6 +22,10 @@ import (
 
 const (
 	gracefulShutdownDuration = 30 * time.Second
+
+	// allow 5 req/s
+	redisExpiration = 1 * time.Second
+	maxCount        = 5
 )
 
 var (
@@ -60,6 +65,7 @@ func main() {
 	app := gin.Default()
 	r := app.Group("/")
 
+	r.Use(middlewares.RateLimit(rClient, redisExpiration, maxCount))
 	handlers.NewShortenerHandler(r, db, rClient)
 
 	svr := http.Server{
